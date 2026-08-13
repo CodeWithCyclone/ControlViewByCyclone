@@ -54,8 +54,8 @@ On first use, the app seeds a default admin account automatically (lazily, the f
 `/api/register` or `/api/login` runs):
 
 ```
-username: admin
-password: admin123
+username: *****
+password: ********
 ```
 
 **Change this password immediately after first login.** There is currently no "change password" UI —
