@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Sign in — Admin Control Console</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="/css/main.css" />
+</head>
+<body>
+<div class="center-shell">
+  <div class="card">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div>
+        <div class="brand-title">Control Console</div>
+        <div class="brand-sub">Session-based access</div>
+      </div>
+    </div>
+    <h1>Welcome back</h1>
+    <p class="lead">Sign in to continue to your page.</p>
+
+    <form id="loginForm">
+      <label for="username">Username</label>
+      <input id="username" name="username" autocomplete="username" required />
+
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required />
+
+      <button class="btn-primary" type="submit" id="submitBtn">Sign in</button>
+    </form>
+
+    <div class="alert alert-error" id="errorBox"></div>
+
+    <div class="foot-link">Don't have an account? <a href="/register.html">Register</a></div>
+  </div>
+</div>
+
+<script src="/js/common.js"></script>
+<script>
+  var form = document.getElementById("loginForm");
+  var errorBox = document.getElementById("errorBox");
+  var submitBtn = document.getElementById("submitBtn");
+
+  form.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    errorBox.classList.remove("show");
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Signing in…";
+    try {
+      await ACC.api("/api/login", {
+        method: "POST",
+        body: JSON.stringify({
+          username: document.getElementById("username").value.trim(),
+          password: document.getElementById("password").value,
+          fingerprint: ACC.getFingerprint(),
+        }),
+      });
+      window.location.href = "/user.html";
+    } catch (err) {
+      errorBox.textContent = err.message || "Login failed.";
+      errorBox.classList.add("show");
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Sign in";
+    }
+  });
+</script>
+</body>
+</html>

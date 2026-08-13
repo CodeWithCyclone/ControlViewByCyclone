@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Admin Console</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="/css/main.css" />
+</head>
+<body>
+<div class="admin-shell">
+  <div class="admin-header">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div>
+        <div class="brand-title">Admin Control Console</div>
+        <div class="brand-sub" id="whoami">…</div>
+      </div>
+    </div>
+    <div class="row-actions">
+      <span class="pill" id="rolePill">…</span>
+      <button class="btn-secondary btn-small" id="logoutBtn">Log out</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="accounts">Accounts &amp; Devices</button>
+    <button class="tab-btn" data-tab="content">Content &amp; Maintenance</button>
+    <button class="tab-btn" data-tab="notify">Notifications</button>
+  </div>
+
+  <!-- Accounts tab -->
+  <div class="tab-panel active" id="tab-accounts">
+    <div class="panel">
+      <h2>Create account</h2>
+      <form id="createForm">
+        <div class="field-row">
+          <div>
+            <label>Username</label>
+            <input id="newUsername" required minlength="3" />
+          </div>
+          <div>
+            <label>Password</label>
+            <input id="newPassword" type="password" required minlength="6" />
+          </div>
+          <div>
+            <label>Role</label>
+            <select id="newRole">
+              <option value="user">user</option>
+              <option value="mod">mod</option>
+              <option value="admin">admin</option>
+            </select>
+          </div>
+          <div>
+            <label>Custom role label (optional)</label>
+            <input id="newCustomRole" placeholder="e.g. editor" />
+          </div>
+        </div>
+        <button class="btn-primary" type="submit" style="max-width:220px;">Create approved account</button>
+      </form>
+      <div class="alert alert-error" id="createError"></div>
+      <div class="alert alert-ok" id="createOk"></div>
+    </div>
+
+    <div class="panel">
+      <h2>All accounts &amp; devices</h2>
+      <div class="responsive-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Access</th>
+              <th>Logins</th>
+              <th>Active time</th>
+              <th>Last active</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="usersBody">
+            <tr><td colspan="8">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Content & maintenance tab -->
+  <div class="tab-panel" id="tab-content">
+    <div class="panel">
+      <h2>Maintenance mode</h2>
+      <label class="toggle">
+        <input type="checkbox" id="maintenanceToggle" />
+        <span class="slider"></span>
+      </label>
+      <span id="maintenanceLabel" style="margin-left:10px; font-size:13px; color:var(--text-dim);">Disabled</span>
+      <label for="maintenanceNotice">Maintenance notice text</label>
+      <textarea id="maintenanceNotice" rows="3"></textarea>
+      <div class="hint">Shown to non-admin users on the User Page while maintenance mode is on. Admins bypass it.</div>
+      <button class="btn-primary" id="saveMaintenanceBtn" style="max-width:220px;">Save maintenance settings</button>
+    </div>
+
+    <div class="panel">
+      <h2>Active content (User Page iframe)</h2>
+      <label>Content type</label>
+      <select id="contentType">
+        <option value="url">URL</option>
+        <option value="html">Raw HTML</option>
+      </select>
+      <label id="payloadLabel" for="contentPayload">Target URL</label>
+      <textarea id="contentPayload" rows="6" placeholder="https://example.com"></textarea>
+      <div class="hint">URL mode sets the iframe <code>src</code>. HTML mode sets a sandboxed <code>srcdoc</code>.</div>
+      <button class="btn-primary" id="saveContentBtn" style="max-width:220px;">Publish content</button>
+      <div class="alert alert-ok" id="contentOk"></div>
+      <div class="alert alert-error" id="contentError"></div>
+    </div>
+  </div>
+
+  <!-- Notifications tab -->
+  <div class="tab-panel" id="tab-notify">
+    <div class="panel">
+      <h2>Send notification</h2>
+      <label>Target</label>
+      <select id="notifyTarget">
+        <option value="">Broadcast to all users</option>
+      </select>
+      <label>Message</label>
+      <textarea id="notifyMessage" rows="3" placeholder="Notice text shown as a toast on the User Page"></textarea>
+      <button class="btn-primary" id="sendNotifyBtn" style="max-width:220px;">Send</button>
+      <div class="alert alert-ok" id="notifyOk"></div>
+    </div>
+    <div class="panel">
+      <h2>Recent notifications</h2>
+      <div class="responsive-table-wrap">
+        <table>
+          <thead><tr><th>Message</th><th>Target</th><th>Sent</th></tr></thead>
+          <tbody id="notifyBody"><tr><td colspan="3">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/js/common.js"></script>
+<script>
+(function () {
+  var me = null;
+
+  function fmtSeconds(total) {
+    total = total || 0;
+    var h = Math.floor(total / 3600);
+    var m = Math.floor((total % 3600) / 60);
+    var s = total % 60;
+    if (h > 0) return h + "h " + m + "m";
+    if (m > 0) return m + "m " + s + "s";
+    return s + "s";
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return "never";
+    var d = new Date(iso);
+    return d.toLocaleString();
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  async function requireAdminOrMod() {
+    var res = await ACC.api("/api/me");
+    if (!res.user || (res.user.role !== "admin" && res.user.role !== "mod")) {
+      window.location.replace("/login.html");
+      return null;
+    }
+    return res.user;
+  }
+
+  function initTabs() {
+    document.querySelectorAll(".tab-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        document.querySelectorAll(".tab-btn").forEach(function (b) { b.classList.remove("active"); });
+        document.querySelectorAll(".tab-panel").forEach(function (p) { p.classList.remove("active"); });
+        btn.classList.add("active");
+        document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+      });
+    });
+  }
+
+  async function loadUsers() {
+    var res = await ACC.api("/api/admin/users");
+    var body = document.getElementById("usersBody");
+    var notifySelect = document.getElementById("notifyTarget");
+    body.innerHTML = "";
+    notifySelect.innerHTML = '<option value="">Broadcast to all users</option>';
+
+    res.users
+      .sort(function (a, b) { return a.username.localeCompare(b.username); })
+      .forEach(function (u) {
+        var opt = document.createElement("option");
+        opt.value = u.id;
+        opt.textContent = u.username;
+        notifySelect.appendChild(opt);
+
+        var isPrivileged = u.role === "admin" || u.role === "mod";
+        var canManage = me.role === "admin" || !isPrivileged;
+
+        var tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td>" + escapeHtml(u.username) + (u.customRole ? ' <span class="hint">(' + escapeHtml(u.customRole) + ")</span>" : "") + "</td>" +
+          "<td><span class=\"pill role-" + u.role + "\">" + u.role + "</span></td>" +
+          "<td><span class=\"status-badge status-" + u.status + "\">" + u.status + "</span></td>" +
+          "<td><label class=\"toggle\"><input type=\"checkbox\" data-access-id=\"" + u.id + "\" " + (u.internetAccess ? "checked" : "") + (canManage ? "" : " disabled") + "><span class=\"slider\"></span></label></td>" +
+          "<td>" + u.loginCount + "</td>" +
+          "<td>" + fmtSeconds(u.totalActiveSeconds) + "</td>" +
+          "<td>" + fmtDate(u.lastActiveAt) + "</td>" +
+          "<td class=\"row-actions\">" +
+          (u.status === "pending" && canManage
+            ? '<button class="btn-secondary btn-small btn-ok" data-approve="' + u.id + '">Approve</button><button class="btn-secondary btn-small btn-danger" data-reject="' + u.id + '">Reject</button>'
+            : "") +
+          (me.role === "admin" ? '<button class="btn-secondary btn-small btn-danger" data-delete="' + u.id + '">Delete</button>' : "") +
+          "</td>";
+        body.appendChild(tr);
+      });
+
+    body.querySelectorAll("[data-access-id]").forEach(function (el) {
+      el.addEventListener("change", async function () {
+        await ACC.api("/api/admin/users", {
+          method: "PATCH",
+          body: JSON.stringify({ id: Number(el.dataset.accessId), internetAccess: el.checked }),
+        });
+      });
+    });
+    body.querySelectorAll("[data-approve]").forEach(function (el) {
+      el.addEventListener("click", async function () {
+        await ACC.api("/api/admin/users", { method: "PATCH", body: JSON.stringify({ id: Number(el.dataset.approve), status: "approved" }) });
+        loadUsers();
+      });
+    });
+    body.querySelectorAll("[data-reject]").forEach(function (el) {
+      el.addEventListener("click", async function () {
+        await ACC.api("/api/admin/users", { method: "PATCH", body: JSON.stringify({ id: Number(el.dataset.reject), status: "rejected" }) });
+        loadUsers();
+      });
+    });
+    body.querySelectorAll("[data-delete]").forEach(function (el) {
+      el.addEventListener("click", async function () {
+        if (!confirm("Delete this account permanently?")) return;
+        await ACC.api("/api/admin/users?id=" + el.dataset.delete, { method: "DELETE" });
+        loadUsers();
+      });
+    });
+  }
+
+  function updatePayloadLabel() {
+    var type = document.getElementById("contentType").value;
+    document.getElementById("payloadLabel").textContent = type === "url" ? "Target URL" : "Raw HTML";
+    document.getElementById("contentPayload").placeholder = type === "url" ? "https://example.com" : "<h1>Hello</h1>";
+  }
+
+  async function loadSettings() {
+    var res = await ACC.api("/api/admin/settings");
+    var s = res.settings;
+    document.getElementById("maintenanceToggle").checked = s.maintenanceMode;
+    document.getElementById("maintenanceLabel").textContent = s.maintenanceMode ? "Enabled" : "Disabled";
+    document.getElementById("maintenanceNotice").value = s.maintenanceNotice;
+    document.getElementById("contentType").value = s.contentType;
+    document.getElementById("contentPayload").value = s.contentPayload;
+    updatePayloadLabel();
+  }
+
+  async function loadNotifications() {
+    var res = await ACC.api("/api/admin/notifications");
+    var body = document.getElementById("notifyBody");
+    body.innerHTML = "";
+    res.notifications.forEach(function (n) {
+      var tr = document.createElement("tr");
+      tr.innerHTML =
+        "<td>" + escapeHtml(n.message) + "</td>" +
+        "<td>" + (n.targetUserId ? "User #" + n.targetUserId : "Broadcast") + "</td>" +
+        "<td>" + fmtDate(n.createdAt) + "</td>";
+      body.appendChild(tr);
+    });
+    if (res.notifications.length === 0) {
+      body.innerHTML = '<tr><td colspan="3">No notifications sent yet.</td></tr>';
+    }
+  }
+
+  async function init() {
+    me = await requireAdminOrMod();
+    if (!me) return;
+
+    document.getElementById("whoami").textContent = "Signed in as " + me.username;
+    var pill = document.getElementById("rolePill");
+    pill.textContent = me.role;
+    pill.classList.add("role-" + me.role);
+
+    var isAdmin = me.role === "admin";
+    document.getElementById("saveMaintenanceBtn").style.display = isAdmin ? "" : "none";
+    document.getElementById("saveContentBtn").style.display = isAdmin ? "" : "none";
+    document.getElementById("maintenanceToggle").disabled = !isAdmin;
+    document.getElementById("maintenanceNotice").disabled = !isAdmin;
+    document.getElementById("contentType").disabled = !isAdmin;
+    document.getElementById("contentPayload").disabled = !isAdmin;
+    if (!isAdmin) {
+      var newRoleSelect = document.getElementById("newRole");
+      Array.from(newRoleSelect.options).forEach(function (opt) {
+        if (opt.value === "admin" || opt.value === "mod") opt.disabled = true;
+      });
+    }
+
+    initTabs();
+    await Promise.all([loadUsers(), loadSettings(), loadNotifications()]);
+
+    document.getElementById("logoutBtn").addEventListener("click", async function () {
+      await ACC.api("/api/logout", { method: "POST" });
+      window.location.href = "/login.html";
+    });
+
+    document.getElementById("createForm").addEventListener("submit", async function (e) {
+      e.preventDefault();
+      var errorBox = document.getElementById("createError");
+      var okBox = document.getElementById("createOk");
+      errorBox.classList.remove("show");
+      okBox.classList.remove("show");
+      try {
+        await ACC.api("/api/admin/users", {
+          method: "POST",
+          body: JSON.stringify({
+            username: document.getElementById("newUsername").value.trim(),
+            password: document.getElementById("newPassword").value,
+            role: document.getElementById("newRole").value,
+            customRole: document.getElementById("newCustomRole").value.trim(),
+          }),
+        });
+        okBox.textContent = "Account created.";
+        okBox.classList.add("show");
+        e.target.reset();
+        loadUsers();
+      } catch (err) {
+        errorBox.textContent = err.message || "Failed to create account.";
+        errorBox.classList.add("show");
+      }
+    });
+
+    document.getElementById("contentType").addEventListener("change", updatePayloadLabel);
+
+    document.getElementById("saveMaintenanceBtn").addEventListener("click", async function () {
+      var checked = document.getElementById("maintenanceToggle").checked;
+      await ACC.api("/api/admin/settings", {
+        method: "PATCH",
+        body: JSON.stringify({
+          maintenanceMode: checked,
+          maintenanceNotice: document.getElementById("maintenanceNotice").value,
+        }),
+      });
+      document.getElementById("maintenanceLabel").textContent = checked ? "Enabled" : "Disabled";
+    });
+
+    document.getElementById("saveContentBtn").addEventListener("click", async function () {
+      var errorBox = document.getElementById("contentError");
+      var okBox = document.getElementById("contentOk");
+      errorBox.classList.remove("show");
+      okBox.classList.remove("show");
+      try {
+        await ACC.api("/api/admin/settings", {
+          method: "PATCH",
+          body: JSON.stringify({
+            contentType: document.getElementById("contentType").value,
+            contentPayload: document.getElementById("contentPayload").value,
+          }),
+        });
+        okBox.textContent = "Content published to User Page.";
+        okBox.classList.add("show");
+      } catch (err) {
+        errorBox.textContent = err.message || "Failed to publish content.";
+        errorBox.classList.add("show");
+      }
+    });
+
+    document.getElementById("sendNotifyBtn").addEventListener("click", async function () {
+      var message = document.getElementById("notifyMessage").value.trim();
+      if (!message) return;
+      var target = document.getElementById("notifyTarget").value;
+      await ACC.api("/api/admin/notifications", {
+        method: "POST",
+        body: JSON.stringify({ message: message, targetUserId: target || null }),
+      });
+      document.getElementById("notifyMessage").value = "";
+      var okBox = document.getElementById("notifyOk");
+      okBox.textContent = "Notification sent.";
+      okBox.classList.add("show");
+      setTimeout(function () { okBox.classList.remove("show"); }, 3000);
+      loadNotifications();
+    });
+
+    setInterval(loadUsers, 20000);
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

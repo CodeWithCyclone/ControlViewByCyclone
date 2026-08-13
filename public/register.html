@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Register — Admin Control Console</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="/css/main.css" />
+</head>
+<body>
+<div class="center-shell">
+  <div class="card">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div>
+        <div class="brand-title">Control Console</div>
+        <div class="brand-sub">Create an account</div>
+      </div>
+    </div>
+    <h1>Request access</h1>
+    <p class="lead">New accounts require admin approval before you can sign in.</p>
+
+    <form id="registerForm">
+      <label for="username">Username</label>
+      <input id="username" name="username" minlength="3" maxlength="64" required />
+
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" minlength="6" required />
+
+      <label for="password2">Confirm password</label>
+      <input id="password2" name="password2" type="password" minlength="6" required />
+
+      <button class="btn-primary" type="submit" id="submitBtn">Request access</button>
+    </form>
+
+    <div class="alert alert-error" id="errorBox"></div>
+    <div class="alert alert-ok" id="okBox"></div>
+
+    <div class="foot-link">Already approved? <a href="/login.html">Sign in</a></div>
+  </div>
+</div>
+
+<script src="/js/common.js"></script>
+<script>
+  var form = document.getElementById("registerForm");
+  var errorBox = document.getElementById("errorBox");
+  var okBox = document.getElementById("okBox");
+  var submitBtn = document.getElementById("submitBtn");
+
+  form.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    errorBox.classList.remove("show");
+    okBox.classList.remove("show");
+
+    var pw = document.getElementById("password").value;
+    var pw2 = document.getElementById("password2").value;
+    if (pw !== pw2) {
+      errorBox.textContent = "Passwords do not match.";
+      errorBox.classList.add("show");
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Submitting…";
+    try {
+      var res = await ACC.api("/api/register", {
+        method: "POST",
+        body: JSON.stringify({
+          username: document.getElementById("username").value.trim(),
+          password: pw,
+          fingerprint: ACC.getFingerprint(),
+        }),
+      });
+      okBox.textContent = res.message || "Registration submitted.";
+      okBox.classList.add("show");
+      form.reset();
+      submitBtn.textContent = "Request access";
+    } catch (err) {
+      errorBox.textContent = err.message || "Registration failed.";
+      errorBox.classList.add("show");
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Request access";
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>User Page</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #0b0e14; }
+  #frame {
+    position: fixed; inset: 0; width: 100vw; height: 100vh; border: none; display: none;
+  }
+  #status {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 10px; color: #e8eaf0; font-family: -apple-system, sans-serif;
+    background: #0b0e14; text-align: center; padding: 24px;
+  }
+  #status h1 { font-size: 20px; margin: 0; }
+  #status p { color: #8891a7; font-size: 14px; max-width: 420px; margin: 0; }
+  .spinner {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 3px solid #232838; border-top-color: #6d8dfc;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  a.linklike { color: #6d8dfc; text-decoration: none; }
+  .toast-stack {
+    position: fixed; top: 16px; right: 16px; display: flex; flex-direction: column;
+    gap: 8px; z-index: 999; max-width: 340px;
+  }
+  .toast {
+    background: #12161f; border: 1px solid #6d8dfc; color: #e8eaf0;
+    border-radius: 8px; padding: 12px 14px; font-size: 13px;
+    box-shadow: 0 10px 30px -10px rgba(0,0,0,0.6); font-family: -apple-system, sans-serif;
+  }
+</style>
+</head>
+<body>
+<div id="status">
+  <div class="spinner"></div>
+  <h1>Loading…</h1>
+</div>
+<iframe id="frame" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+<div class="toast-stack" id="toastStack"></div>
+
+<script src="/js/common.js"></script>
+<script>
+(function () {
+  var statusEl = document.getElementById("status");
+  var frame = document.getElementById("frame");
+  var toastStack = document.getElementById("toastStack");
+  var lastContentKey = null;
+
+  function showStatus(title, message) {
+    frame.style.display = "none";
+    statusEl.style.display = "flex";
+    statusEl.innerHTML = "<h1>" + title + "</h1>" + (message ? "<p>" + message + "</p>" : "");
+  }
+
+  function showFrame(content) {
+    var key = content.type + ":" + content.payload;
+    if (key === lastContentKey) {
+      statusEl.style.display = "none";
+      frame.style.display = "block";
+      return;
+    }
+    lastContentKey = key;
+    if (content.type === "url") {
+      frame.removeAttribute("srcdoc");
+      frame.src = content.payload;
+    } else {
+      frame.removeAttribute("src");
+      frame.srcdoc = content.payload;
+    }
+    statusEl.style.display = "none";
+    frame.style.display = "block";
+  }
+
+  function toast(message) {
+    var el = document.createElement("div");
+    el.className = "toast";
+    el.textContent = message;
+    toastStack.appendChild(el);
+    setTimeout(function () {
+      el.style.transition = "opacity .3s ease";
+      el.style.opacity = "0";
+      setTimeout(function () { el.remove(); }, 300);
+    }, 6000);
+  }
+
+  async function checkAuth() {
+    try {
+      var me = await ACC.api("/api/me");
+      return me.user;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async function tick() {
+    try {
+      var data = await ACC.api("/api/heartbeat", {
+        method: "POST",
+        body: JSON.stringify({ fingerprint: ACC.getFingerprint() }),
+      });
+
+      if (!data.authenticated) {
+        showStatus("Sign in required", 'Please <a class="linklike" href="/login.html">sign in</a> or <a class="linklike" href="/register.html">register</a> to continue.');
+        return;
+      }
+
+      if (data.blocked) {
+        if (data.reason === "not_approved") {
+          showStatus(
+            data.status === "rejected" ? "Access denied" : "Pending approval",
+            data.status === "rejected"
+              ? "Your registration was rejected. Contact an administrator."
+              : "Your account is awaiting admin approval."
+          );
+        } else {
+          showStatus("Access blocked", "Your internet access has been disabled by an administrator.");
+        }
+        return;
+      }
+
+      if (data.maintenanceMode) {
+        showStatus("Maintenance in progress", data.maintenanceNotice || "Please check back later.");
+        return;
+      }
+
+      if (data.content) {
+        showFrame(data.content);
+      }
+
+      if (data.notifications && data.notifications.length) {
+        data.notifications.forEach(function (n) { toast(n.message); });
+      }
+    } catch (e) {
+      showStatus("Connection issue", "Retrying…");
+    }
+  }
+
+  tick();
+  setInterval(tick, 15000);
+})();
+</script>
+</body>
+</html>
